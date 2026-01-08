@@ -1,145 +1,125 @@
 import { Telegraf, Markup } from 'telegraf';
 
-// ===== Check environment variables =====
 if (!process.env.BOT_TOKEN || !process.env.ADMIN_IDS) {
-  console.error("❌ Please set BOT_TOKEN and ADMIN_IDS environment variables");
+  console.error("❌ BOT_TOKEN or ADMIN_IDS missing");
   process.exit(1);
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+const ADMIN_IDS = process.env.ADMIN_IDS.split(',').map(id => Number(id.trim()));
 
-// ===== Admin IDs (comma-separated in ENV) =====
-const ADMIN_IDS = process.env.ADMIN_IDS.split(',').map(id => parseInt(id.trim()));
+const leaveStore = new Map();      // temp request
+const leaveCount = new Map();      // approved count
 
-// ===== Store leave requests =====
-const leaveStore = new Map();
-
-// ===== Store user leave days =====
-const leaveDays = new Map();
-
-// ===== Helper: get current month string =====
-function getCurrentMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${now.getMonth() + 1}`; // e.g. "2026-1"
+function nowTime() {
+  const d = new Date();
+  return d.toISOString().replace('T', ' ').slice(0, 16);
 }
 
-// ===== /start command =====
+/* ================= /start ================= */
 bot.start((ctx) => {
   ctx.reply(
     'Please select leave type:',
     Markup.inlineKeyboard([
-      [Markup.button.callback('Half day', 'leave_half')],
-      [Markup.button.callback('One day', 'leave_one')],
-      [Markup.button.callback('Two days', 'leave_two')]
+      [
+        Markup.button.callback('Half day', 'type_half'),
+        Markup.button.callback('One day', 'type_one'),
+        Markup.button.callback('Two days', 'type_two')
+      ]
     ])
   );
 });
 
-// ===== Handle leave type =====
-bot.action(/leave_(.+)/, async (ctx) => {
-  const leaveType = ctx.match[1];
-  leaveStore.set(ctx.from.id, { type: leaveType });
+/* ================= Leave Type ================= */
+bot.action(/type_(.+)/, async (ctx) => {
+  const type = ctx.match[1];
+  leaveStore.set(ctx.from.id, { type });
+
   await ctx.answerCbQuery();
-  ctx.editMessageText(
-    `You selected leave type: ${leaveType}
-Please select reason:`,
+  await ctx.editMessageText(
+    `You selected leave type: ${type}\nPlease select reason:`,
     Markup.inlineKeyboard([
-      [Markup.button.callback('Sick', 'reason_sick')],
-      [Markup.button.callback('Personal', 'reason_personal')],
-      [Markup.button.callback('Doctor', 'reason_doctor')],
-      [Markup.button.callback('Appointment', 'reason_appointment')],
-      [Markup.button.callback('Birthday', 'reason_birthday')],
-      [Markup.button.callback('Go Home', 'reason_home')]
+      [
+        Markup.button.callback('Sick', 'reason_sick'),
+        Markup.button.callback('Personal', 'reason_personal'),
+        Markup.button.callback('Doctor', 'reason_doctor')
+      ],
+      [
+        Markup.button.callback('Appointment', 'reason_appointment'),
+        Markup.button.callback('Birthday', 'reason_birthday'),
+        Markup.button.callback('Go Home', 'reason_home')
+      ]
     ])
   );
 });
 
-// ===== Handle leave reason =====
+/* ================= Reason ================= */
 bot.action(/reason_(.+)/, async (ctx) => {
   const reason = ctx.match[1];
-  const userLeave = leaveStore.get(ctx.from.id);
-  if (!userLeave) {
-    await ctx.answerCbQuery('Please select leave type first');
-    return;
-  }
-  userLeave.reason = reason;
-  leaveStore.set(ctx.from.id, userLeave);
-  await ctx.answerCbQuery();
+  const data = leaveStore.get(ctx.from.id);
+  if (!data) return ctx.answerCbQuery('Invalid request');
 
-  // Send request message
+  data.reason = reason;
+  data.time = nowTime();
+  leaveStore.set(ctx.from.id, data);
+
+  const count = leaveCount.get(ctx.from.id) || 0;
+
+  await ctx.answerCbQuery();
   await ctx.reply(
-    `📩 New leave request
+`📩 New leave request 📩
 
-User: ${ctx.from.first_name}
-Leave type: ${userLeave.type}
-Reason: ${userLeave.reason}`,
+User: ${ctx.from.id} ${ctx.from.first_name}
+🔥 Leave type: ${data.type}
+♻️ Reason: ${data.reason}
+📊 Leave count: ${count}
+📅 Requested at: ${data.time}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback('Apply', `apply_${ctx.from.id}`)]
+      [
+        Markup.button.callback('✅ Approve', `approve_${ctx.from.id}`),
+        Markup.button.callback('❌ Reject', `reject_${ctx.from.id}`)
+      ]
     ])
   );
 });
 
-// ===== Handle Apply button =====
-bot.action(/apply_(.+)/, async (ctx) => {
-  const userId = ctx.match[1];
-  if (!ADMIN_IDS.includes(ctx.from.id)) {
-    await ctx.answerCbQuery('Only admin can approve', { show_alert: true });
-    return;
-  }
-  await ctx.answerCbQuery();
-  ctx.editMessageReplyMarkup(
-    Markup.inlineKeyboard([
-      [Markup.button.callback('Approve', `approve_${userId}`), Markup.button.callback('Reject', `reject_${userId}`)]
-    ])
-  );
-});
-
-// ===== Approve button =====
+/* ================= Approve ================= */
 bot.action(/approve_(.+)/, async (ctx) => {
-  const userId = ctx.match[1];
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.answerCbQuery('Admin only', { show_alert: true });
+  }
+
+  const userId = Number(ctx.match[1]);
+  const data = leaveStore.get(userId);
+  if (!data) return ctx.answerCbQuery('Request not found');
+
+  const days =
+    data.type === 'half' ? 0.5 :
+    data.type === 'one' ? 1 : 2;
+
+  const current = leaveCount.get(userId) || 0;
+  leaveCount.set(userId, current + days);
+
   await ctx.answerCbQuery();
-  const userLeave = leaveStore.get(parseInt(userId));
-  if (!userLeave) {
-    ctx.editMessageText('❌ Leave info not found');
-    return;
-  }
+  await ctx.editMessageText(
+`✅ Leave approved
 
-  // Calculate leave days
-  let days = 0;
-  if (userLeave.type === 'half') days = 0.5;
-  else if (userLeave.type === 'one') days = 1;
-  else if (userLeave.type === 'two') days = 2;
-
-  const month = getCurrentMonth();
-  if (!leaveDays.has(userId)) leaveDays.set(userId, {});
-  const userMonthData = leaveDays.get(userId);
-
-  if (!userMonthData.month || userMonthData.month !== month) {
-    userMonthData.month = month;
-    userMonthData.total = 0;
-  }
-  userMonthData.total += days;
-  leaveDays.set(userId, userMonthData);
-
-  ctx.editMessageText(
-    `✅ ${ctx.from.first_name} approved user's leave
-` +
-    `Leave type: ${userLeave.type}
-Reason: ${userLeave.reason}
-` +
-    `Monthly total leave: ${userMonthData.total} days`
+User ID: ${userId}
+Leave type: ${data.type}
+Reason: ${data.reason}
+📊 Total leave count: ${leaveCount.get(userId)}`
   );
 });
 
-// ===== Reject button =====
+/* ================= Reject ================= */
 bot.action(/reject_(.+)/, async (ctx) => {
-  const userId = ctx.match[1];
+  if (!ADMIN_IDS.includes(ctx.from.id)) {
+    return ctx.answerCbQuery('Admin only', { show_alert: true });
+  }
+
   await ctx.answerCbQuery();
-  ctx.editMessageText(`${ctx.from.first_name} ❌ Rejected user's leave request`);
+  await ctx.editMessageText('❌ Leave request rejected');
 });
 
-// ===== Launch bot =====
 bot.launch();
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-console.log('🚀 Telegram leave bot with admin approval and monthly tracking started');
+console.log('🚀 Leave bot updated and running');
