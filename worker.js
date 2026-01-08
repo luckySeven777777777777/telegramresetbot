@@ -22,13 +22,14 @@ bot.start((ctx) => {
     'Please select leave type:',
     Markup.inlineKeyboard([
       [
-        Markup.button.callback('Half day', 'type_half'),
-        Markup.button.callback('One day', 'type_one'),
-        Markup.button.callback('Two days', 'type_two')
+        Markup.button.callback('⏳ Half day', 'type_half'),
+        Markup.button.callback('📅 One day', 'type_one'),
+        Markup.button.callback('📆 Two days', 'type_two')
       ]
     ])
   );
 });
+
 
 /* ================= Leave Type ================= */
 bot.action(/type_(.+)/, async (ctx) => {
