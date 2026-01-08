@@ -8,8 +8,8 @@ if (!process.env.BOT_TOKEN || !process.env.ADMIN_IDS) {
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_IDS = process.env.ADMIN_IDS.split(',').map(id => Number(id.trim()));
 
-const leaveStore = new Map();      // temp request
-const leaveCount = new Map();      // approved count
+const leaveStore = new Map();   // temp leave request
+const leaveCount = new Map();   // approved leave count
 
 function nowTime() {
   const d = new Date();
@@ -30,27 +30,29 @@ bot.start((ctx) => {
   );
 });
 
-
 /* ================= Leave Type ================= */
 bot.action(/type_(.+)/, async (ctx) => {
   const type = ctx.match[1];
-  leaveStore.set(ctx.from.id, { type });
+
+  leaveStore.set(ctx.from.id, {
+    type
+  });
 
   await ctx.answerCbQuery();
   await ctx.editMessageText(
     `You selected leave type: ${type}\nPlease select reason:`,
     Markup.inlineKeyboard([
-  [
-    Markup.button.callback('🛏 Sick', 'reason_sick'),
-    Markup.button.callback('🚫 Personal', 'reason_personal'),
-    Markup.button.callback('💉 Doctor', 'reason_doctor')
-  ],
-  [
-    Markup.button.callback('📆 Appointment', 'reason_appointment'),
-    Markup.button.callback('🎂 Birthday', 'reason_birthday'),
-    Markup.button.callback('🏠 Go Home', 'reason_home')
-  ]
-])
+      [
+        Markup.button.callback('🛏 Sick', 'reason_sick'),
+        Markup.button.callback('🚫 Personal', 'reason_personal'),
+        Markup.button.callback('💉 Doctor', 'reason_doctor')
+      ],
+      [
+        Markup.button.callback('📆 Appointment', 'reason_appointment'),
+        Markup.button.callback('🎂 Birthday', 'reason_birthday'),
+        Markup.button.callback('🏠 Go Home', 'reason_home')
+      ]
+    ])
   );
 });
 
@@ -62,6 +64,8 @@ bot.action(/reason_(.+)/, async (ctx) => {
 
   data.reason = reason;
   data.time = nowTime();
+  data.name = ctx.from.first_name; // ⭐ 飞机名字
+
   leaveStore.set(ctx.from.id, data);
 
   const count = leaveCount.get(ctx.from.id) || 0;
@@ -70,7 +74,7 @@ bot.action(/reason_(.+)/, async (ctx) => {
   await ctx.reply(
 `📩 New leave request 📩
 
-User: ${ctx.from.id} ${ctx.from.first_name}
+User: ${ctx.from.id} (${data.name})
 🔥 Leave type: ${data.type}
 ♻️ Reason: ${data.reason}
 📊 Leave count: ${count}
@@ -96,7 +100,8 @@ bot.action(/approve_(.+)/, async (ctx) => {
 
   const days =
     data.type === 'half' ? 0.5 :
-    data.type === 'one' ? 1 : 2;
+    data.type === 'one' ? 1 :
+    2;
 
   const current = leaveCount.get(userId) || 0;
   leaveCount.set(userId, current + days);
@@ -105,11 +110,17 @@ bot.action(/approve_(.+)/, async (ctx) => {
   await ctx.editMessageText(
 `✅ Leave approved
 
-User ID: ${userId}
+User ID: ${userId} (${data.name})
 Leave type: ${data.type}
 Reason: ${data.reason}
-📊 Total leave count: ${leaveCount.get(userId)}`
+📊 Total leave count: ${leaveCount.get(userId)}
+
+✅ The administrator has approved your leave successfully.
+Please take a good rest ♨️ and return to work normally after your leave 💼`
   );
+
+  // 清除已处理请求（可选）
+  leaveStore.delete(userId);
 });
 
 /* ================= Reject ================= */
@@ -118,8 +129,15 @@ bot.action(/reject_(.+)/, async (ctx) => {
     return ctx.answerCbQuery('Admin only', { show_alert: true });
   }
 
+  const userId = Number(ctx.match[1]);
+  leaveStore.delete(userId);
+
   await ctx.answerCbQuery();
-  await ctx.editMessageText('❌ Leave request rejected');
+  await ctx.editMessageText(
+`❌ Leave request rejected
+
+The administrator has rejected this leave request.`
+  );
 });
 
 bot.launch();
