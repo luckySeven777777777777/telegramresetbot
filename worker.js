@@ -39,17 +39,17 @@ bot.action(/type_(.+)/, async (ctx) => {
   await ctx.editMessageText(
     `You selected leave type: ${type}\nPlease select reason:`,
     Markup.inlineKeyboard([
-      [
-        Markup.button.callback('Sick', 'reason_sick'),
-        Markup.button.callback('Personal', 'reason_personal'),
-        Markup.button.callback('Doctor', 'reason_doctor')
-      ],
-      [
-        Markup.button.callback('Appointment', 'reason_appointment'),
-        Markup.button.callback('Birthday', 'reason_birthday'),
-        Markup.button.callback('Go Home', 'reason_home')
-      ]
-    ])
+  [
+    Markup.button.callback('🛏 Sick', 'reason_sick'),
+    Markup.button.callback('🚫 Personal', 'reason_personal'),
+    Markup.button.callback('💉 Doctor', 'reason_doctor')
+  ],
+  [
+    Markup.button.callback('📆 Appointment', 'reason_appointment'),
+    Markup.button.callback('🎂 Birthday', 'reason_birthday'),
+    Markup.button.callback('🏠 Go Home', 'reason_home')
+  ]
+])
   );
 });
 
