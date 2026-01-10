@@ -106,6 +106,8 @@ bot.action(/approve_(.+)/, async (ctx) => {
   const current = leaveCount.get(userId) || 0;
   leaveCount.set(userId, current + days);
 
+  const approvedTime = nowTime(); // ✅ 通过时间（关键）
+
   await ctx.answerCbQuery();
   await ctx.editMessageText(
 `✅ Leave approved
@@ -113,13 +115,16 @@ bot.action(/approve_(.+)/, async (ctx) => {
 User ID: ${userId} (${data.name})
 Leave type: ${data.type}
 Reason: ${data.reason}
+
 📊 Total leave count: ${leaveCount.get(userId)}
+📅 Requested at: ${data.time}
+✅ Approved at: ${approvedTime}
 
 ✅ The administrator has approved your leave successfully.
 Please take a good rest ♨️ and return to work normally after your leave 💼`
   );
 
-  // 清除已处理请求（可选）
+  // 清除已处理请求
   leaveStore.delete(userId);
 });
 
