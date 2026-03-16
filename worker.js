@@ -12,8 +12,14 @@ const leaveStore = new Map();   // temp leave request
 const leaveCount = new Map();   // approved leave count
 
 function nowTime() {
-  const d = new Date();
-  return d.toISOString().replace('T', ' ').slice(0, 16);
+  return new Date().toLocaleString('en-GB', {
+    timeZone: 'Asia/Yangon',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).replace(',', '');
 }
 
 /* ================= /start ================= */
